@@ -1,7 +1,12 @@
 """
-Subclass of the BaseCredContainer used for reading secrets from bitwarden password manager
+Subclass of the BaseCredContainer used for reading secrets from bitwarden password manager.
+This class wraps the bitwarden CLI.  See:  https://bitwarden.com/help/article/cli/#using-an-api-key
+Note that only the Enterprise version of bitwarden can (supported) hit the REST API.  
+In contrast, the API key that can be found under the "My Account" page can be used to log into the cli tool
+
 """
 
+from ctypes import resize
 from flat_file import FlatFileCredContainer
 from base_cred_container import CredContainerBase
 import json
@@ -9,17 +14,17 @@ import requests
 import hashlib
 import base64
 import getpass
+import os
+import subprocess
+import uuid
+from shutil import which
 
-API_CONF_FLAT_FILE='/.credentials/bw_api.json'
-API_BASE_URL='https://api.bitwarden.com'
-API_AUTH_ENDPOINT='https://identity.bitwarden.com/connect/token'
+API_KEY_FLAT_FILE='/.credentials/bw_api.json'
 
-def make_bitwarden_container_using_flat_file(api_conf_flat_file:str = None):
+def make_bitwarden_container(api_key_flat_file:str = None):
     """
     Factory function to return a BitwardeCredContainer object, instantiated using data
-    read from a flat file.  In this case, we expect the contents of the flat file to be
-    JSON with these keys: [client_id, client_secret, scope, grant_type]
-    See 'View API Key' button at https://vault.bitwarden.com/#/settings/account
+    read from a flat file.See 'View API Key' button at https://vault.bitwarden.com/#/settings/account
 
     Args:
         api_key_flat_file (str, optional): The flat file that contains the API details. If not provided, defaults to API_KEY_FLAT_FILE
@@ -29,61 +34,16 @@ def make_bitwarden_container_using_flat_file(api_conf_flat_file:str = None):
     """
 
     # Read the contents of the flat file
-    if api_conf_flat_file is None:
-        api_conf_flat_file = API_CONF_FLAT_FILE
+    if api_key_flat_file is None:
+        api_key_flat_file = API_KEY_FLAT_FILE
     
-    file_cred_obj = FlatFileCredContainer(file_path=api_conf_flat_file)
+    file_cred_obj = FlatFileCredContainer(file_path=api_key_flat_file)
     file_contents = file_cred_obj.read()
     j = json.loads(file_contents)
-
-    # Handle the password, it needs to be hashed (as would be the case with the hash_password function).  User can omit this from config or set falsy to be prompted interactively
-    if not j.get('password'):
-        j['password'] = prompt_for_credentials(email=j['username']) # Causes user to be prompted and puts the hashed value into the j dictionary
 
     o = BitwardenCredContainer(**j)
     return o
 
-def hash_password(email:str, password: str) -> str:
-    """
-    Function to return the 'password' argument to pass into the API.
-    As it turns out, the API documentation covers getting a bearer token only for the Enterprise version.
-    I had to do some hacking (read:  Googling / Inspecting Crome Network traffic) to understand that the 
-    POST data payload into the API to get a token really ought to look like this:
-        grant_type=password
-        username=<EMAIL>
-        password=<PASSWORD_HASH>  (As constructed by this function)
-        scope=api
-        client_id=web
-
-    Basically:  I've copied/collapsed the 'makeKey' and 'hashedPassword' functions from here and made the pythonic:  https://github.com/birlorg/bitwarden-cli/blob/trunk/python/bitwarden/crypto.py
-    
-    Example here explains how the hashing works (Not sure how they know, but they know.  
-        Consider:  Login with example creds and inspect network): https://github.com/jcs/rubywarden/blob/master/API.md
-    
-    This calculator more or less proves the same:  https://bitwarden.com/help/crypto.html
-    Using these arguments, we expect a "Master Password" of "r5CFRR+n9NQI8a525FY+0BPR0HGOjVJX0cR1KEMnIOo="
-    If you were to inspect network traffic and attempt to log into bitwarden with these (imaginary) credentials, you'd see this same value
-        user = nobody@example.com
-        password = p4ssw0rd
-        iterations = 5000
-        
-
-    Args:
-        password (str): The password to hash.  Corresponds with bitwarden Master password
-        email_address_salt (str): The email address to use as salt
-
-    Returns:
-        str: The password hash
-    """
-
-    iterations = 5000  # Don't know how somebody figured out that this it the number, but it is the number (See Docstring)
-
-    password = password.encode('utf-8')
-    email = email.lower().encode('utf-8')
-
-    hash_key = hashlib.pbkdf2_hmac(hash_name='sha256', password=password, salt=email, iterations=5000, dklen=32)
-    ret_val = base64.b64encode(hashlib.pbkdf2_hmac(hash_name='sha256', password=hash_key, salt=password, iterations=1, dklen=32)).decode('utf-8')
-    return ret_val
 
 def prompt_for_credentials(email:str = None, password: str = None) -> str:
     """
@@ -115,51 +75,181 @@ class BitwardenCredContainer(CredContainerBase):
         CredContainerBase ([type]): [description]
     """
 
-    def __init__(self, username, password, **kwargs) -> None:
+    def __init__(self, client_id:str = None, client_secret:str = None, session_key:str = None, **kwargs) -> None:
         """
         Init method for the BitwardenCredContainer
 
-        Note:  The password needs to be hashed.  See docstring under hash_password function for more specifics
-
         Args:
-            username ([type]): Username (email address)
-            password ([type]): Password (Hashed, as would be treutnred by the has_password function)
-            grant_type (str, optional): [description]. Defaults to "password".  This is an argument required by the API.  It might as well be hard-coded
-            scope (str, optional): [description]. Defaults to "api".  This is an argument required by the API.  It might as well be hard-coded
-            client_id (str, optional): [description]. Defaults to "web".  This is an argument required by the API.  It might as well be hard-coded
+            client_id (string): Username (email address)
+            client_secret (string): Password (Hashed, as would be treutnred by the has_password function)
+            
+            session_key (string):  If passed, should correspond with a currently valid sesison key that corresponds with the '--session' 
+                for any command and/or the BW_SESSION environment variable.  Ultimately, this is the value we're after for any subsequent
+                interactions with the cli.  Thus, if supplied (and valid) this is really the only arg we need
         """
 
-        self.username = username
-        self._password = password
-        self.grant_type = kwargs.get('grant_type') or 'password'
-        self.scope = kwargs.get('scope') or 'api'
-        self.client_id = kwargs.get('client_id') or 'web'
+        # We won't get far at all if the bw tool isn't installed.
+        which_bw = which('bw')
+        if which_bw is None:
+            raise FileNotFoundError(f"This program wraps the bitwarden cli tool, 'bw', but it doesn't seem to be installed (or is not on PATH).  Please fix that and try again.  See:  https://bitwarden.com/help/article/cli/")
+
+        # Pin client id and client secret to self
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.session_key = session_key
+
+        # Just for a stab in the dark , see if BW_SESSION is set and if so, set the value to self.session_key
+        # If it's invalid, it's not a big deal because get_auth_status (which wraps get_bitwarden_status) will return 'locked'
+        if 'BW_SESSION' in os.environ:
+            self.session_key = os.getenv('BW_SESSION')
+
+        # Do validations
+        if session_key is None:
+            # Then we've got to have the client id and secret
+            if self.client_id is None or self.client_secret is None:
+                raise ValueError(f"If not instantiating with a session key, client_id and client_secret arguments must be supplied")
+        
+        # Pin other arbitrary stuff to self
+        for k in kwargs.keys():
+            if not hasattr(self, k):
+                setattr(self, k, kwargs[k])
+
+        # Set environment variables that the BW CLI looks for to skip prompt for credentials
+        os.environ['BW_CLIENTID'] = self.client_id
+        os.environ['BW_CLIENTSECRET'] = self.client_secret
+
+        # Get context about email address
+        if not hasattr(self, 'email_address'):
+            self.email_address = input("Bitwarden account email: ")
+            print("If you instantiated via a JSON config file, you can avoid this message in the future by adding the key 'email_address'")
+
+        # Do the login flow.  This will ultimately pin the value for self.session_key if we didn't have a valid one already
+        if self.get_auth_status() != 'unlocked':
+            self.do_auth_and_unlock_flow()
+
+        # At this point we should be unlocked for sure.  If not, we've failed miserably
+        if self.get_auth_status() != 'unlocked':
+            raise ValueError(f"The bitwarden vault should be unlocked now using the session key but it still isn't.  Something bad happened.  There might be a bug in this program.  Please troubleshoot.\nSession Key: {self.session_key}")
+
+
+    def do_auth_and_unlock_flow(self):
+        """
+        Gently guides us through the necessary steps to get the vault into an unlocked state
+        We need to go from 'unauthenticated' --> 'locked' --> 'unlocked'
+        """
+
+        auth_status = self.get_auth_status()
+
+        # Bail out if we're already unlocked
+        if auth_status == 'unlocked':
+            return
+        
+        #We've got some auth and/or unlocking to do. Put the password into a randomly named environment variable
+        rand_variable_name = str(uuid.uuid1()).upper()
+        os.environ[rand_variable_name] = getpass.getpass("Bitwarden Master Password: ")
+
+        try:
+            while auth_status != 'unlocked':
+                
+                auth_status = self.get_auth_status()
+                
+                if auth_status == 'unauthenticated':
+                    # Let's get authenticated
+                    self.log_in(password_environemt_variable=rand_variable_name)
+
+                elif auth_status == 'locked':
+                    # We are authenticated (That is, bitwarden is pointing to our account), but the vault is locked
+                    self.unlock(password_environemt_variable=rand_variable_name) # This method pins session_key to self
+                elif auth_status == 'unlocked':
+                    # We are authenticated and the vault is unlocked.  We can interact with it now
+                    print("The vault is now unlocked.")
+                    break
+                else:
+                    raise ValueError(f"There is no handling for the status '{auth_status}'")
+        finally:
+            del os.environ[rand_variable_name] # Implicitly calls unsetenv
+
+
+    def log_in(self, password_environemt_variable:str):
+        """
+        Walks is through the login process.  For deets, see 'bw login --help'
+
+        Args:
+            password_environemt_variable (string): The name of an environment variable which contains our master password
+        """
+
+        client_secret = self.client_secret
+        email = self.email_address
+
+        # Now log in and point to the environment variable
+        print ("Logging into Bitwarden...")
+        cmd = f"bw login {self.email_address} --passwordenv {password_environemt_variable} --apikey {self.client_secret}"
+        result = subprocess.run(cmd, shell=True, capture_output=True)
+
+    def unlock(self, password_environemt_variable:str):
+        """
+        Unlocks the vault after having previously logged in.  This action returns a session key
+
+        Args:
+            password_environemt_variable (string): The name of an environment variable which contains our master password
+        """
+        
+        print ("Unlocking Bitwarden Vault...")
+        cmd = f"bw unlock --passwordenv {password_environemt_variable} --raw"  #The raw flag simply prints the session key that we should use for subsequent requests
+        result = subprocess.run(cmd, shell=True, capture_output=True)
+
+        if result.returncode == 0:
+            session_key = result.stdout.decode('utf-8')
+            self.session_key = session_key  #This can be set in the env var BW_SESSION or passed with a '--session' argument with any bw command    
+
+
+
+    def get_bitwarden_status(self):
+        """
+        Issues the 'bitwarden status' command, which returns a JSON object we can use to tell if we're logged in or not
+        """
+
+        # Do we already have a session key?
+        if self.session_key is not None and self.session_key != '':
+            session_key_part = f" --session '{self.session_key}'"
+        else:
+            session_key_part = ""
+
+        cmd = f"bw status{session_key_part}"
+        result = subprocess.run(cmd, shell=True, capture_output=True)
+
+        if result.returncode != 0:
+            raise OSError(f"The command '{cmd}' resulted in return code of {result.returncode}:\n{result.stderr.decode('utf-8')}")
+        else:
+            ret_val = result.stdout.decode('utf-8')
+    
+        return json.loads(ret_val)
+
+    def get_auth_status(self):
+        """
+        Returns the authentication status which according to 'bw status --help' should be one of these:
+            "unauthenticated", "locked", "unlocked"
+        """
+
+        return self.get_bitwarden_status()['status']
+        
+
+    def get_session_key(self):
+        """
+        Issues the command 'bw login --raw' which causes authentication to happen and returns a session key to be used for subsequent requests
+        """
+
+        # Get the status
+        self.get_bitwarden_status()
+
+
+        command = "bw login --raw"
+        result = subprocess.run(command, shell=True, capture_output=True)
+
 
         print(f"Instantiated {type(self)} for username (email address) {self.username}")
         
 
-        #self._get_bearer_token()
-
-    # def _get_bearer_token(self):
-    #     """
-    #     Gets a bearer token from the API to use for subsequent requests
-    #     """
-    #     # TODO:  I dont think we need this method.  Drop it
-
-    #     url = API_AUTH_ENDPOINT
-        
-    #     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        
-    #     data = dict(grant_type="client_credentials", 
-    #                 scope="api", 
-    #                 client_id=self._client_id, 
-    #                 client_secret=self._client_secret)
-        
-
-    #     res = requests.post(url=url, headers=headers, data=json.dumps(data))
-    #     print(res.json())
-
-    #     print("!")
 
 
 
@@ -173,8 +263,11 @@ class BitwardenCredContainer(CredContainerBase):
         return super().delete_cred()
 
 if __name__ == '__main__':
-    o = make_bitwarden_container_using_flat_file()
-    print("!")
+    #TODO:  Really need to unit test this entire module thoroughly.  Write test cases
+
+
+    o = make_bitwarden_container()
+
 
     # test = hash_password(password="p4ssw0rd", email="nobody@example.com")
     # print(test)
