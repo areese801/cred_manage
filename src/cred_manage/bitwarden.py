@@ -10,9 +10,9 @@ from ctypes import resize
 from flat_file import FlatFileCredContainer
 from base_cred_container import CredContainerBase
 import json
-import requests
-import hashlib
-import base64
+#TODO:  Drop this:  import requests
+#TODO:  Drop this:  import hashlib
+#TODO:  Drop this:  import base64
 import getpass
 import os
 import subprocess
@@ -37,35 +37,35 @@ def make_bitwarden_container(api_key_flat_file:str = None):
     if api_key_flat_file is None:
         api_key_flat_file = API_KEY_FLAT_FILE
     
-    file_cred_obj = FlatFileCredContainer(file_path=api_key_flat_file)
+    file_cred_obj = FlatFileCredContainer(file_path=api_key_flat_file, allow_broad_permissions=False) # This ss very stubborn about reading a file that isn't locked down properly
     file_contents = file_cred_obj.read()
     j = json.loads(file_contents)
 
     o = BitwardenCredContainer(**j)
     return o
 
+#TODO:  Drop this
+# def prompt_for_credentials(email:str = None, password: str = None) -> str:
+#     """
+#     A wrapper function around hash_password that will interactively prompt the use for the (non-hashed) password in order to come up with the right digest.
+#     This behavior allows a user to not specify the hashed password in the config flat file and be prompted for it instead
+#     Args:
+#         email (string, optional): The email address. If not passed, the user will be prompted
+#         password (string, optional): The password. If not passed (intended behavior for this function), the user will be prompted
 
-def prompt_for_credentials(email:str = None, password: str = None) -> str:
-    """
-    A wrapper function around hash_password that will interactively prompt the use for the (non-hashed) password in order to come up with the right digest.
-    This behavior allows a user to not specify the hashed password in the config flat file and be prompted for it instead
-    Args:
-        email (string, optional): The email address. If not passed, the user will be prompted
-        password (string, optional): The password. If not passed (intended behavior for this function), the user will be prompted
+#     Returns:
+#         string: The hashed password 
+#     """
 
-    Returns:
-        string: The hashed password 
-    """
+#     if not email:
+#         email = input("Bitwarden account email address: ")
 
-    if not email:
-        email = input("Bitwarden account email address: ")
+#     if not password:
+#         password = getpass.getpass(f"{email} account password: ")
 
-    if not password:
-        password = getpass.getpass(f"{email} account password: ")
+#     ret_val = hash_password(email=email, password=password)
 
-    ret_val = hash_password(email=email, password=password)
-
-    return ret_val
+#     return ret_val
 
 class BitwardenCredContainer(CredContainerBase):
     """
@@ -144,7 +144,7 @@ class BitwardenCredContainer(CredContainerBase):
         if auth_status == 'unlocked':
             return
         
-        #We've got some auth and/or unlocking to do. Put the password into a randomly named environment variable
+        # We've got some auth and/or unlocking to do. Put the password into a randomly named environment variable
         rand_variable_name = str(uuid.uuid1()).upper()
         os.environ[rand_variable_name] = getpass.getpass("Bitwarden Master Password: ")
 
@@ -242,16 +242,11 @@ class BitwardenCredContainer(CredContainerBase):
         # Get the status
         self.get_bitwarden_status()
 
-
         command = "bw login --raw"
         result = subprocess.run(command, shell=True, capture_output=True)
 
-
         print(f"Instantiated {type(self)} for username (email address) {self.username}")
         
-
-
-
 
     def get_cred(self):
         return super().get_cred()
@@ -261,6 +256,7 @@ class BitwardenCredContainer(CredContainerBase):
     
     def delete_cred(self):
         return super().delete_cred()
+
 
 if __name__ == '__main__':
     #TODO:  Really need to unit test this entire module thoroughly.  Write test cases
