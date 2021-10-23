@@ -22,3 +22,6 @@ temp_data_*.txt
 # Ignore requirements.txt, which for this package is only used to spin up a local venv.  
 # See packaging config files instead
 requirements.txt
+
+# Don't track the Dist folder used for PyPi packaging
+dist/
