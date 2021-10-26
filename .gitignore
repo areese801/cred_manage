@@ -25,4 +25,5 @@ requirements.txt
 
 # Don't track the Dist folder used for PyPi packaging
 dist/
+build/
 *.egg-info/
