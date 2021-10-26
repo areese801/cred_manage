@@ -5,14 +5,9 @@ Note that only the Enterprise version of bitwarden can (supported) hit the REST 
 In contrast, the API key that can be found under the "My Account" page can be used to log into the cli tool
 
 """
-
-from ctypes import resize
-from flat_file import FlatFileCredContainer
-from base_cred_container import CredContainerBase
+from cred_manage.flat_file import FlatFileCredContainer
+from cred_manage.base_cred_container import CredContainerBase
 import json
-#TODO:  Drop this:  import requests
-#TODO:  Drop this:  import hashlib
-#TODO:  Drop this:  import base64
 import getpass
 import os
 import subprocess
@@ -23,11 +18,12 @@ API_KEY_FLAT_FILE='/.credentials/bw_api.json'
 
 def make_bitwarden_container(api_key_flat_file:str = None):
     """
-    Factory function to return a BitwardeCredContainer object, instantiated using data
+    Factory function to return a BitwardenCredContainer object, instantiated using data
     read from a flat file.See 'View API Key' button at https://vault.bitwarden.com/#/settings/account
 
     Args:
-        api_key_flat_file (str, optional): The flat file that contains the API details. If not provided, defaults to API_KEY_FLAT_FILE
+        api_key_flat_file (str, optional): The flat file that contains the API details.
+        If not provided, defaults to API_KEY_FLAT_FILE
 
     Returns:
         BitwardenCredContainer
@@ -37,35 +33,16 @@ def make_bitwarden_container(api_key_flat_file:str = None):
     if api_key_flat_file is None:
         api_key_flat_file = API_KEY_FLAT_FILE
     
-    file_cred_obj = FlatFileCredContainer(file_path=api_key_flat_file, allow_broad_permissions=False) # This ss very stubborn about reading a file that isn't locked down properly
+    file_cred_obj = FlatFileCredContainer(
+        file_path=api_key_flat_file,
+        allow_broad_permissions=False) # This ss very stubborn about reading a file that isn't locked down properly
     file_contents = file_cred_obj.read()
     j = json.loads(file_contents)
 
     o = BitwardenCredContainer(**j)
     return o
 
-#TODO:  Drop this
-# def prompt_for_credentials(email:str = None, password: str = None) -> str:
-#     """
-#     A wrapper function around hash_password that will interactively prompt the use for the (non-hashed) password in order to come up with the right digest.
-#     This behavior allows a user to not specify the hashed password in the config flat file and be prompted for it instead
-#     Args:
-#         email (string, optional): The email address. If not passed, the user will be prompted
-#         password (string, optional): The password. If not passed (intended behavior for this function), the user will be prompted
 
-#     Returns:
-#         string: The hashed password 
-#     """
-
-#     if not email:
-#         email = input("Bitwarden account email address: ")
-
-#     if not password:
-#         password = getpass.getpass(f"{email} account password: ")
-
-#     ret_val = hash_password(email=email, password=password)
-
-#     return ret_val
 
 class BitwardenCredContainer(CredContainerBase):
     """
@@ -131,6 +108,9 @@ class BitwardenCredContainer(CredContainerBase):
         if self.get_auth_status() != 'unlocked':
             raise ValueError(f"The bitwarden vault should be unlocked now using the session key but it still isn't.  Something bad happened.  There might be a bug in this program.  Please troubleshoot.\nSession Key: {self.session_key}")
 
+        # Load the vault and pin it to self.  Note that this will pin the vault with all passwords redacted
+        self.vault_contents = None
+        self.load_vault()  # Sets self.vault_contents
 
     def do_auth_and_unlock_flow(self):
         """
@@ -184,7 +164,7 @@ class BitwardenCredContainer(CredContainerBase):
         # Now log in and point to the environment variable
         print ("Logging into Bitwarden...")
         cmd = f"bw login {self.email_address} --passwordenv {password_environemt_variable} --apikey {self.client_secret}"
-        result = subprocess.run(cmd, shell=True, capture_output=True)
+        result = subprocess.run(cmd, shell=True, capture_output=True)  #TODO:  Use helper function here
 
     def unlock(self, password_environemt_variable:str):
         """
@@ -196,12 +176,14 @@ class BitwardenCredContainer(CredContainerBase):
         
         print ("Unlocking Bitwarden Vault...")
         cmd = f"bw unlock --passwordenv {password_environemt_variable} --raw"  #The raw flag simply prints the session key that we should use for subsequent requests
-        result = subprocess.run(cmd, shell=True, capture_output=True)
+        result = subprocess.run(cmd, shell=True, capture_output=True)  #TODO:  Use helper function here
 
         if result.returncode == 0:
             session_key = result.stdout.decode('utf-8')
             self.session_key = session_key  #This can be set in the env var BW_SESSION or passed with a '--session' argument with any bw command    
-
+        else: 
+            err = result.stderr.decode('utf-8')
+            raise ValueError(err)
 
 
     def get_bitwarden_status(self):
@@ -216,7 +198,7 @@ class BitwardenCredContainer(CredContainerBase):
             session_key_part = ""
 
         cmd = f"bw status{session_key_part}"
-        result = subprocess.run(cmd, shell=True, capture_output=True)
+        result = subprocess.run(cmd, shell=True, capture_output=True)  #TODO:  Use helper function here
 
         if result.returncode != 0:
             raise OSError(f"The command '{cmd}' resulted in return code of {result.returncode}:\n{result.stderr.decode('utf-8')}")
@@ -243,7 +225,7 @@ class BitwardenCredContainer(CredContainerBase):
         self.get_bitwarden_status()
 
         command = "bw login --raw"
-        result = subprocess.run(command, shell=True, capture_output=True)
+        result = subprocess.run(command, shell=True, capture_output=True)  #TODO:  Use helper function here
 
         print(f"Instantiated {type(self)} for username (email address) {self.username}")
         
@@ -257,12 +239,106 @@ class BitwardenCredContainer(CredContainerBase):
     def delete_cred(self):
         return super().delete_cred()
 
+    def load_vault(self, force_reload=False):
+        """
+        Gets the entire vault, removes all passwords and pins it to self for some client side interrogation
+
+        Args:
+            force_reload (bool, optional): If True, causes a refresh from bw if the vault is already pinned to self. Defaults to False.
+
+        Returns:
+            [dict]: A dictionary with the complete contents of the vault and given value at the path i['login']['password'] will be removed
+        """
+
+        # Short circuit?
+        if force_reload is False and self.vault_contents is not None:
+            return self.vault_contents
+
+        # Get everything in the vault
+        print("Synchronizing Vault")
+        self._do_bw_command('bw sync')
+        print("Getting all vault items.  Passwords will be redacted.")
+        vault_items_as_string = self._do_bw_command('bw list items')
+        vault_items = json.loads(vault_items_as_string)
+        
+        # Just to be safe.  Get rid of the vault as string.
+        vault_items_as_string = ''
+        del vault_items_as_string
+
+        # Drop all passwords from the json blob, just for good measure.  If we actually want a password, we'll get it from the vault again
+        for i in vault_items:
+            login = i.get('login')
+            if login is not None:
+                if type(login) is dict and 'password' in login.keys():
+                    login['password'] = '<password removed>'
+
+        # Just to be safe, again.  
+        ret_val = vault_items.copy()
+        vault_items = {}
+        del vault_items
+
+        self.vault_contents = ret_val
+        return ret_val
+
+    
+
+    def _do_bw_command(self, command:str, raise_exceptions_on_non_zero=True):
+        """
+        Helper method.  Does a bitwarden cli command and passes the results back
+        Args:
+            command (string):  The command to pass to the bw clie
+            raise_exceptions_on_non_zero (bool, optional): Controls exception raising if the command returns a non-zero code. Defaults to True.
+        """
+
+        session_key_part = f'--session "{self.session_key}"'
+        cmd = command
+        if session_key_part not in cmd:
+            cmd = f"{cmd} {session_key_part}"
+
+        result = subprocess.run(cmd, shell=True, capture_output=True)
+        return_code = result.returncode
+        std_out = result.stdout.decode('utf-8')
+        std_err = result.stderr.decode('utf-8')
+
+        # Raise an exception as necessary
+        if return_code != 0 and raise_exceptions_on_non_zero is True:
+            raise Exception(f"The bw cli returned a non-0 exit code for the command: '{cmd.replace(self.session_key, '<session_key>')}'\n{std_err}")
+
+        return std_out
+
+    def print_items(self):
+        """
+        Prints the ID and Name of each item from the vault.  Useful mostly for figuring out the GUID of a given object
+        """
+
+
+        vault_contents = self.vault_contents
+        for item in vault_contents:
+            object_type = item['object']
+            object_id = item['id']
+            object_name = item['name']
+
+            s = f"Object ID: {object_id}\tObject Type: {object_type}\tObject Name: {object_name}"
+            
+            if object_type != 'item':
+                raise ValueError(f"Encountered a non 'item' object type in the vault.  This is unexcpected. {s}")
+
+            print(s)
+        
+
+
+
+
 
 if __name__ == '__main__':
     #TODO:  Really need to unit test this entire module thoroughly.  Write test cases
 
 
     o = make_bitwarden_container()
+    o.print_items()
+    
+
+
 
 
     # test = hash_password(password="p4ssw0rd", email="nobody@example.com")
