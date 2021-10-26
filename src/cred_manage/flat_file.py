@@ -9,7 +9,7 @@ IF THERE IS A BETTER, MORE SUITABLE IMPLEMENTATION, PLEASE USE THAT
 
 import os
 import sys
-from base_cred_container import CredContainerBase
+from cred_manage.base_cred_container import CredContainerBase
 
 class FlatFileCredContainer(CredContainerBase):
     """
@@ -147,11 +147,5 @@ class FlatFileCredContainer(CredContainerBase):
 
 
 
-# if __name__ == '__main__':
-#     o = FlatFileCredContainer(file_path='/tmp/credential.txt', allow_broad_permissions=True)
-#     print(f"Credential = {o.get_cred()}")
-#     o.set_cred(new_cred='bar\n\n\nff', strip=False)
-#     print(f"Credential = {o.get_cred()}")
-#     b = o.check_permission_bits()
-#     print(o.check_permission_bits())
-#     pass
+if __name__ == '__main__':
+    o = FlatFileCredContainer(file_path='/tmp/very_secret_password.txt', allow_broad_permissions=True)

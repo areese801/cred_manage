@@ -5,7 +5,7 @@ See:  https://code.visualstudio.com/docs/python/testing
 
 
 import unittest
-import flat_file
+from cred_manage.flat_file import FlatFileCredContainer
 import os
 
 FLAT_FILE_THAT_EXISTS='/tmp/file_that_exist.txt'
@@ -44,7 +44,7 @@ class Test_FlatFileCredContainer(unittest.TestCase):
         Assert that a FileNotFoundError is raised when we try to init FlatFileCredContainer with a bad file name
         """
 
-        self.assertRaises(FileNotFoundError, flat_file.FlatFileCredContainer, file_path='/tmp/fake_file.txt')
+        self.assertRaises(FileNotFoundError, FlatFileCredContainer, file_path='/tmp/fake_file.txt')
 
     def test_init_with_valid_file_name(self):
         """
@@ -53,7 +53,7 @@ class Test_FlatFileCredContainer(unittest.TestCase):
 
         # Armed with a file that exists, init the object.  We expect no exceptions to be raised
         try:
-            o = flat_file.FlatFileCredContainer(file_path=FLAT_FILE_THAT_EXISTS)
+            o = FlatFileCredContainer(file_path=FLAT_FILE_THAT_EXISTS, allow_broad_permissions=True)
         except Exception as ex:
             self.fail(f"An unexpected exception occurred when instantiating the FlatFileCredContainer during the test:  {str(type(ex))}")
 
@@ -63,39 +63,12 @@ class Test_FlatFileCredContainer(unittest.TestCase):
         The superclass will raise a NotImplementedError otherwise
         """
 
-        o = flat_file.FlatFileCredContainer(file_path=FLAT_FILE_THAT_EXISTS)
+        o = FlatFileCredContainer(file_path=FLAT_FILE_THAT_EXISTS, allow_broad_permissions=True)
         try:
             c = o.get_cred(self)
         except NotImplementedError as ex:
             self.fail(f"The get_cred() method has not been implemented in the subclass: {type(o)}")
 
-
-    # def test_set_cred_method_implemented(self):
-    #     """
-    #     Asserts that the set_cred method has been implemented
-    #     The superclass with raise a NotImplementedError otherwise
-    #     """
-
-    #     o = flat_file.FlatFileCredContainer(file_path=FLAT_FILE_THAT_EXISTS)
-    #     try:
-    #         c = o.set_cred(self)
-    #     except NotImplementedError as ex:
-    #         self.fail(f"The set_cred() method has not been implemented in the subclass: {type(o)}")
-
-
-    # def test_delete_cred_method_implemented(self):
-    #     """
-    #     Asserts that the delete_cred method has been implemented
-    #     The superclass with raise a NotImplementedError otherwise
-    #     """
-
-    #     o = flat_file.FlatFileCredContainer(file_path=FLAT_FILE_THAT_EXISTS)
-    #     try:
-    #         c = o.delete_cred(self)
-    #     except NotImplementedError as ex:
-    #         self.fail(f"The delete_cred() method has not been implemented in the subclass: {type(o)}")
-
-        
 
 
 if __name__ == '__main__':
