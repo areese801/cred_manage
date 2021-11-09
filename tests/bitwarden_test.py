@@ -20,24 +20,36 @@ class Test_BitwardenCredContainer(unittest.TestCase):
         some_guid = bw_cc.vault_contents[0]['id']
 
         bw_item = bw_cc.get_vault_item_by_guid(guid=some_guid)
+        self.assertIsInstance(bw_item, dict)
 
-        # itm = bw.get_vault_item_by_guid(guid=some_guid)
-        # self.assertIsInstance(itm, dict)
+    def test_get_vault_item_by_guid_w_bad_guid(self):
+        bw_cc = make_bitwarden_container()
 
+        # Ensure we get a an exception when we seek a non-existent guid.  Note the way we pass args into assertRaises
+        # There may be a way to pass in named arguments but this will suffice for now
+        rubbish_guid = "This is not a real guid.  it's fake rubbish"
+        self.assertRaises(ValueError, bw_cc.get_vault_item_by_guid, rubbish_guid)
+        
 
-        # # Ensure that we get an exception if we try to find an item with a bad GUID (one that doesn't exist)
-        # self.assertRaises(ValueError, bw.get_vault_item_by_guid(guid='this_is_not_a_valid_GUID'))
-
-
-    #TODO:  Implement this test
     # def test_get_credentials_by_guid(self):
     #     raise NotImplementedError
+    
+    
     #TODO:  Implement this test
-    # def test_get_username_by_guid(self):
-    #     raise NotImplementedError
-    #TODO:  Implement this test
-    # def test_get_password_by_guid(self):
-    #     raise NotImplementedError
+    def test_get_username_by_guid(self):
+        # Make a container and get the password for the test GUID
+        obj = make_bitwarden_container()
+        pw = obj.get_username_by_guid(guid=TEST_GUID)
+
+        self.assertIsInstance(pw, str)
+    
+    def test_get_password_by_guid(self):
+        # Make a container and get the password for the test GUID
+        obj = make_bitwarden_container()
+        pw = obj.get_password_by_guid(guid=TEST_GUID)
+
+        self.assertIsInstance(pw, str)
+        self.assertNotEqual(pw, '<password removed>')
 
     def test_all_passwords_redacted(self):
         """
@@ -50,8 +62,9 @@ class Test_BitwardenCredContainer(unittest.TestCase):
 
             self.assertEqual(pw, '<password removed>')
 
-    # TODO:  Implement this test
     def test_get_cred(self):
+        #  Note that this is just a wrapper around get_password_by_guid, but it is defined in the superclass and 
+        #  Intended to be overridden
         
         # Make a container and get the credentials object
         obj = make_bitwarden_container()
@@ -63,12 +76,3 @@ class Test_BitwardenCredContainer(unittest.TestCase):
         self.assertIn('password', creds)
         self.assertNotEqual(creds['password'], '<password removed>')
     
-    
-    def test_set_cred(self):
-        self.assertRaises(NotImplementedError)  # At this time (2021-11-08), we're not bothering to implement this method 
-
-    #TODO:  Implement this test
-    # def test_delete_cred(self):
-    #     raise NotImplementedError
-
-        
