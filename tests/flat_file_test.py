@@ -36,7 +36,6 @@ def tearDownModule():
         os.remove(FLAT_FILE_THAT_EXISTS) # It exists no longer
 
 
-
 class Test_FlatFileCredContainer(unittest.TestCase):
 
     def test_init_with_bad_file_name(self):

@@ -13,6 +13,9 @@
 # Don't track __pycache__ folders
 *__pycache__
 
+# Don't track .pyc (compiled bytecode) files
+*.pyc
+
 # Don't track virtual environment subdirectories
 virtualenv/
 

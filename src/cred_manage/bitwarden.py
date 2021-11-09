@@ -101,24 +101,24 @@ class BitwardenCredContainer(CredContainerBase):
             print("If you instantiated via a JSON config file, you can avoid this message in the future by adding the key 'email_address'")
 
         # Do the login flow.  This will ultimately pin the value for self.session_key if we didn't have a valid one already
-        if self.get_auth_status() != 'unlocked':
-            self.do_auth_and_unlock_flow()
+        if self._get_auth_status() != 'unlocked':
+            self._do_auth_and_unlock_flow()
 
         # At this point we should be unlocked for sure.  If not, we've failed miserably
-        if self.get_auth_status() != 'unlocked':
+        if self._get_auth_status() != 'unlocked':
             raise ValueError(f"The bitwarden vault should be unlocked now using the session key but it still isn't.  Something bad happened.  There might be a bug in this program.  Please troubleshoot.\nSession Key: {self.session_key}")
 
         # Load the vault and pin it to self.  Note that this will pin the vault with all passwords redacted
         self.vault_contents = None
-        self.load_vault()  # Sets self.vault_contents
+        self._load_vault()  # Sets self.vault_contents
 
-    def do_auth_and_unlock_flow(self):
+    def _do_auth_and_unlock_flow(self):
         """
         Gently guides us through the necessary steps to get the vault into an unlocked state
         We need to go from 'unauthenticated' --> 'locked' --> 'unlocked'
         """
 
-        auth_status = self.get_auth_status()
+        auth_status = self._get_auth_status()
 
         # Bail out if we're already unlocked
         if auth_status == 'unlocked':
@@ -131,15 +131,15 @@ class BitwardenCredContainer(CredContainerBase):
         try:
             while auth_status != 'unlocked':
                 
-                auth_status = self.get_auth_status()
+                auth_status = self._get_auth_status()
                 
                 if auth_status == 'unauthenticated':
                     # Let's get authenticated
-                    self.log_in(password_environemt_variable=rand_variable_name)
+                    self._log_in(password_environemt_variable=rand_variable_name)
 
                 elif auth_status == 'locked':
                     # We are authenticated (That is, bitwarden is pointing to our account), but the vault is locked
-                    self.unlock(password_environemt_variable=rand_variable_name) # This method pins session_key to self
+                    self._unlock(password_environemt_variable=rand_variable_name) # This method pins session_key to self
                 elif auth_status == 'unlocked':
                     # We are authenticated and the vault is unlocked.  We can interact with it now
                     print("The vault is now unlocked.")
@@ -150,7 +150,7 @@ class BitwardenCredContainer(CredContainerBase):
             del os.environ[rand_variable_name] # Implicitly calls unsetenv
 
 
-    def log_in(self, password_environemt_variable:str):
+    def _log_in(self, password_environemt_variable:str):
         """
         Walks is through the login process.  For deets, see 'bw login --help'
 
@@ -166,7 +166,7 @@ class BitwardenCredContainer(CredContainerBase):
         cmd = f"bw login {self.email_address} --passwordenv {password_environemt_variable} --apikey {self.client_secret}"
         result = subprocess.run(cmd, shell=True, capture_output=True)  #TODO:  Use helper function here
 
-    def unlock(self, password_environemt_variable:str):
+    def _unlock(self, password_environemt_variable:str):
         """
         Unlocks the vault after having previously logged in.  This action returns a session key
 
@@ -186,7 +186,7 @@ class BitwardenCredContainer(CredContainerBase):
             raise ValueError(err)
 
 
-    def get_bitwarden_status(self):
+    def _get_bitwarden_status(self):
         """
         Issues the 'bitwarden status' command, which returns a JSON object we can use to tell if we're logged in or not
         """
@@ -207,22 +207,22 @@ class BitwardenCredContainer(CredContainerBase):
     
         return json.loads(ret_val)
 
-    def get_auth_status(self):
+    def _get_auth_status(self):
         """
         Returns the authentication status which according to 'bw status --help' should be one of these:
             "unauthenticated", "locked", "unlocked"
         """
 
-        return self.get_bitwarden_status()['status']
+        return self._get_bitwarden_status()['status']
         
 
-    def get_session_key(self):
+    def _retrieve_session_key(self):
         """
         Issues the command 'bw login --raw' which causes authentication to happen and returns a session key to be used for subsequent requests
         """
 
         # Get the status
-        self.get_bitwarden_status()
+        self._get_bitwarden_status()
 
         command = "bw login --raw"
         result = subprocess.run(command, shell=True, capture_output=True)  #TODO:  Use helper function here
@@ -230,8 +230,19 @@ class BitwardenCredContainer(CredContainerBase):
         print(f"Instantiated {type(self)} for username (email address) {self.username}")
         
 
-    def get_cred(self):
-        return super().get_cred()
+    def get_cred(self, guid:str):
+        """
+        A wrapper around the get_credentials_by_guid method.
+        Why?  Because this method is defined in the superclass and is intended to be overridden.
+        That's why.  Of course, it's perfectly fine to just call get_credentials_by_guid
+        Args:
+            guid (str): The Guid which we care to seek
+
+        Returns:
+            [dict]: Dict Containing the username and password in question
+        """
+
+        return self.get_credentials_by_guid(guid=guid) # Raises exceptions as needed
 
     def set_cred(self):
         return super().set_cred()
@@ -239,7 +250,7 @@ class BitwardenCredContainer(CredContainerBase):
     def delete_cred(self):
         return super().delete_cred()
 
-    def load_vault(self, force_reload=False):
+    def _load_vault(self, force_reload=False):
         """
         Gets the entire vault, removes all passwords and pins it to self for some client side interrogation
 
@@ -324,6 +335,92 @@ class BitwardenCredContainer(CredContainerBase):
                 raise ValueError(f"Encountered a non 'item' object type in the vault.  This is unexcpected. {s}")
 
             print(s)
+
+    def get_vault_item_by_guid(self, guid:str):
+        """
+        Gets the item (JSON object) for a given GUID from the vault
+        been redacted previously
+
+        Args:
+            item_guid (str): [description]
+        """
+
+        # Load the vault that is pinned to self
+        if self.vault_contents is None:
+            self._load_vault()
+
+        # Try to find the item within the vault pinned to self.  This saves an uncessary trip to to BW over the internet if it isn't there
+        sought_item = None
+        for item in self.vault_contents:
+            if item['id'] == guid:
+                sought_item = item
+                break
+        
+        # Raise an exception if we didn't find the item
+        if sought_item is None:
+            raise ValueError(f"The item with GUID {guid} was not found in the vault.")
+
+        item_with_password = json.loads(self._do_bw_command(f"bw get item {guid}"))
+
+        return item_with_password
+
+    def get_credentials_by_guid(self, guid:str):
+        """
+        Returns the username and password (beneath the 'login' key) for a given item from the vault
+        This function simply wraps get_vault_item_by_guid, which will raise exceptions is the item is not in the vault
+        Args:
+            guid (str): The GUID for the item we want to retreive credentials for
+        """
+        
+        item_with_password = self.get_vault_item_by_guid(guid=guid)
+        login = item_with_password['login']
+        username = login['username']
+        password = login['password']
+
+        return dict(username=username, password=password)
+
+    def get_username_by_guid(self, guid:str):
+        """
+        Returns the username for a given vault item by GUID.  Since we'll have the vault (without passwords) pinned to self already
+        We can just read that rather than pinging bitwarden again
+
+        Args:
+            guid (str): [description]
+        """
+        # Load the vault that is pinned to self
+        if self.vault_contents is None:
+            self._load_vault()
+
+        # Try to find the item within the vault pinned to self.  This saves an uncessary trip to to BW over the internet if it isn't there
+        sought_item = None
+        for item in self.vault_contents:
+            if item['id'] == guid:
+                sought_item = item
+                break
+        
+        # Raise an exception if we didn't find the item
+        if sought_item is None:
+            raise ValueError(f"The item with GUID {guid} was not found in the vault.")
+
+        return sought_item['login']['username']
+
+    def get_password_by_guid(self, guid:str):
+        """
+        Returns the password for a given item by GUID.  Wraps the get_credentials_by_guid method which in turn wraps get_vault_item_by_guid
+        (which raises exceptions if something is missing)
+
+        Args:
+            guid (str): [description]
+        """
+
+        creds = self.get_credentials_by_guid(guid=guid)
+
+        return creds['password']
+
+    
+
+
+        
         
 
 
@@ -336,6 +433,11 @@ if __name__ == '__main__':
 
     o = make_bitwarden_container()
     o.print_items()
+    itm = o.get_vault_item_by_guid(guid='755bb142-1d9d-44cf-8f74-ac600149633c')
+    un = o.get_username_by_guid(guid='755bb142-1d9d-44cf-8f74-ac600149633c')
+    pw = o.get_password_by_guid(guid='755bb142-1d9d-44cf-8f74-ac600149633c')
+
+    print("!")
     
 
 
