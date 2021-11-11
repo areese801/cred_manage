@@ -79,5 +79,26 @@ Each of these methods accepts a GUID, which serves as the 'primary key' for the 
 When logging into [Bitwarden via the CLI, a Session Key is returned](https://bitwarden.com/help/article/cli/#using-a-session-key), which can be exported to the environment variable `BW_SESSION` to suppress subsequent prompts for the master password.  When instantiating `BitwardenCredContainer`, a check is performed to see if the `BW_SESSION` is set.  If it is set (and valid), you WILL NOT be prompted for the master password, interactively.  If it is not set, YOU WILL be prompted for the master password for each instantiation.  Depending on your use case, exploit this functionality (or not) as appropriate.  Hint:  Consider the ways in which you might be able to temporarily store this value in a `FlatFileCredContainer` object, only to destroy it when you're done.
 
 
+# Example Usage.
+
+In this example we use a `FlatFileCredContainer` object to read the necessary context to instantiate a `BitwardenCredContainer` object out of a flat file.  Then, we print the GUIDs and corresponding names of the items from the Bitwarden Vault
+
+```
+from cred_manage.flat_file import FlatFileCredContainer
+from cred_manage.bitwarden import BitwardenCredContainer
+import json
+
+# Instantiate Flat File Credential Container
+ff_obj = FlatFileCredContainer(file_path='/.credentials/bw_api.json', allow_broad_permissions=False)
+
+# Read the JSON contents out of the Flat file Credential Container
+j = json.loads(ff_obj.read())
+
+# User those JSON contents to instantiate a Bitwarden Credential Container
+bw = BitwardenCredContainer(**j)  #  <-- If environment variable BW_SESSION is set, then no interactive password prompt here.
+
+# Print the GUIDs and corresponding names of vault items
+bw.print_items()
+```
 
 
