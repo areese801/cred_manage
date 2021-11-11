@@ -35,7 +35,7 @@ def make_bitwarden_container(api_key_flat_file:str = None):
     
     file_cred_obj = FlatFileCredContainer(
         file_path=api_key_flat_file,
-        allow_broad_permissions=False) # This ss very stubborn about reading a file that isn't locked down properly
+        allow_broad_permissions=False) # This is very stubborn about reading a file that isn't locked down properly
     file_contents = file_cred_obj.read()
     j = json.loads(file_contents)
 
