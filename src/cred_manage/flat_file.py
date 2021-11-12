@@ -22,12 +22,12 @@ class FlatFileCredContainer(CredContainerBase):
 
         Args:
             file_path (str): A fully qualified path the file which contains the secret
-            allow_broad_permisions (bool, optional):  If set to True, will allow instantiation with too-broad of file permissions
+            allow_broad_permissions (bool, optional):  If set to True, will allow instantiation with too-broad of file permissions
 
     
         """
 
-        # Validate thet the file path is actually a flat file that exists
+        # Validate that the file path is actually a flat file that exists
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"Cannot instantiate {type(self)} container because file doesn't exist: {file_path}")
         
@@ -144,8 +144,3 @@ class FlatFileCredContainer(CredContainerBase):
         ret_val = self.get_cred(strip=False)
 
         return ret_val
-
-
-
-if __name__ == '__main__':
-    o = FlatFileCredContainer(file_path='/tmp/very_secret_password.txt', allow_broad_permissions=True)
