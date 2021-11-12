@@ -70,6 +70,12 @@ class BitwardenCredContainer(CredContainerBase):
         if which_bw is None:
             raise FileNotFoundError(f"This program wraps the bitwarden cli tool, 'bw', but it doesn't seem to be installed (or is not on PATH).  Please fix that and try again.  See:  https://bitwarden.com/help/article/cli/")
 
+        # We also need that bw needs to be at least a specific version
+        minimum_bw_version="1.18.1"
+        valid_version_installed = self._check_bw_version_is_valid(minimum_required_version=minimum_bw_version)
+        if valid_version_installed is False:
+            raise FileNotFoundError(f"The 'bw' command line is installed, but the version is too old.  Version {minimum_bw_version} or greater is required.  Please upgrade using your OS package manager.  Type 'bw --version' to check your version")
+
         # Pin client id and client secret to self
         self.client_id = client_id
         self.client_secret = client_secret
@@ -112,6 +118,54 @@ class BitwardenCredContainer(CredContainerBase):
         self.vault_contents = None
         self._load_vault()  # Sets self.vault_contents
 
+    def _check_bw_version_is_valid(self, minimum_required_version:str):
+        """
+        Checks the version of bitwarden.  We need 1.18.1 or higher to leverage reading password out of environment variables via --passwordenv
+        This method does not use the _do_bw_command() helper function because that passes the session key which we may not have yet
+
+        Args:
+            minimum_required_version (str): A minimum required version string.  Like "1.18.1"
+
+        Raises:
+            ValueError: If the 'bw --version' command results in an error for some reason
+
+        Returns:
+            [Boolean]: A flag telling us if the installed version is recent enough or not
+        """
+
+        # Get the bitwarden version from the command line. 
+        # We're purposely avoiding the _do_bw_command() method here.  
+        cmd = "bw --version"
+        result = subprocess.run(cmd, shell=True, capture_output=True)
+        return_code = result.returncode
+        std_out = result.stdout.decode('utf-8')
+        std_err = result.stderr.decode('utf-8')
+        if return_code != 0:
+            raise ValueError(f"The command '{cmd}' resulted in a non-zero exit code of {return_code}.\n{std_err}")
+        else:
+            bw_env_string = std_out.strip()
+
+        # Parse the installed version number
+        bw_version_parts = bw_env_string.split('.')
+        
+        major = int(bw_version_parts[0]) if len(bw_version_parts) >= 1 else 0
+        minor = int(bw_version_parts[1]) if len(bw_version_parts) >= 2 else 0
+        patch = int(bw_version_parts[2]) if len(bw_version_parts) >= 3 else 0
+
+        # Parse the necessary version number
+        required_bw_version_parts = minimum_required_version.split(".")
+        required_major = int(required_bw_version_parts[0]) if len(required_bw_version_parts) >= 1 else 0
+        required_minor = int(required_bw_version_parts[1]) if len(required_bw_version_parts) >= 2 else 0
+        required_patch = int(required_bw_version_parts[2]) if len(required_bw_version_parts) >= 3 else 0
+
+        # Is it up to snuff?
+        if major >= required_major and minor >= required_minor and patch >= required_patch:
+            valid_version = True
+        else:
+            valid_version = False
+        
+        return valid_version
+        
     def _do_auth_and_unlock_flow(self):
         """
         Gently guides us through the necessary steps to get the vault into an unlocked state
