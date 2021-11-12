@@ -47,7 +47,7 @@ With that warning behind us...
 
 `FlatFileCredContainer` might be a good place to keep API keys, bearer tokens, or anything else that is needed to bootstrap some process or otherwise allow for automation without human interaction.
 
-# About BitwardenCredContainer
+# BitwardenCredContainer
 BitwardenCredContainer is a wrapper around the [Bitwarden CLI](https://bitwarden.com/help/article/cli/).  It is **NOT** a wrapper around the [Bitwarden API](https://bitwarden.com/help/article/public-api/), which as far as this author can tell is only available to Enterprise Organization plans.  If you're a user of an Enterprise Organization plan, you'll probably want to interact with he API directly, using the Python `requests` library, rather than this package.
 
 **Thus, a prerequisite is that you'll have installed the [Bitwarden CLI](https://bitwarden.com/help/article/cli/#download-and-install) ahead of time.**
@@ -76,7 +76,7 @@ Note that the `email_address` key is optional, to suppress a subsequent prompt f
 Each of these methods accepts a GUID, which serves as the 'primary key' for the vault item in question.  If you need to find the GUID for a given item, you can instantiate a `BitwardenCredContainer` object and invoke the `print_items()` method (This will not print passwords).  Alternatively, you can directly invoke the [Bitwarden CLI](https://bitwarden.com/help/article/cli/) using the `bw list items` command (Consider piping into [jq](https://stedolan.github.io/jq/) for readability) to find the GUID (under the `id` key) for any given vault item.
 
 ### About the `BW_SESSION` environment variable.
-When logging into [Bitwarden via the CLI, a Session Key is returned](https://bitwarden.com/help/article/cli/#using-a-session-key), which can be exported to the environment variable `BW_SESSION` to suppress subsequent prompts for the master password.  When instantiating `BitwardenCredContainer`, a check is performed to see if the `BW_SESSION` is set.  If it is set (and valid), you WILL NOT be prompted for the master password, interactively.  If it is not set, YOU WILL be prompted for the master password for each instantiation.  Depending on your use case, exploit this functionality (or not) as appropriate.  Hint:  Consider the ways in which you might be able to temporarily store this value in a `FlatFileCredContainer` object, only to destroy it when you're done.
+When logging into [Bitwarden via the CLI, a Session Key is returned](https://bitwarden.com/help/article/cli/#using-a-session-key), which can be exported to the environment variable `BW_SESSION` to suppress subsequent prompts for the master password.  When instantiating `BitwardenCredContainer`, a check is performed to see if the `BW_SESSION` is set.  If it is set (and valid), YOU WILL NOT be prompted for the master password, interactively.  If it is not set, YOU WILL be prompted for the master password for each instantiation.  Depending on your use case, exploit this functionality (or not) as appropriate.  Hint:  Consider the ways in which you might be able to temporarily store this value in a `FlatFileCredContainer` object, only to destroy it when you're done.
 
 
 # Example Usage.
