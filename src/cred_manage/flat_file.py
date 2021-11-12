@@ -3,7 +3,7 @@ Subclass of the BaseCredContainer class used for reading secrets from a flat fil
 While we all know it is not best practice, IRL to store sensitive things in flat files there may be some cases where it makes sense
 (or at least is 'okay'):  Local Development.  Bearer Tokens.  Short-lived / Temporary Secrets.  Passphrases, corresponding with encryption keys, etc.
 
-THINK TWICE BEFORE USING THIS TYPE OF CREDENTIAL CONTAINER IS PRODUCTION APPLICATIONS!
+THINK TWICE BEFORE USING THIS TYPE OF CREDENTIAL CONTAINER IN PRODUCTION APPLICATIONS!
 IF THERE IS A BETTER, MORE SUITABLE IMPLEMENTATION, PLEASE USE THAT
 """
 
@@ -23,8 +23,6 @@ class FlatFileCredContainer(CredContainerBase):
         Args:
             file_path (str): A fully qualified path the file which contains the secret
             allow_broad_permissions (bool, optional):  If set to True, will allow instantiation with too-broad of file permissions
-
-    
         """
 
         # Validate that the file path is actually a flat file that exists
@@ -42,9 +40,6 @@ class FlatFileCredContainer(CredContainerBase):
         elif perm_info['too_broad'] and allow_broad_permissions is True:
             print(f"Warning!  The file permissions are too broad!\n{perm_msg}", file=sys.stderr)
 
-        
-        
-        
         self._password = self.get_cred()
     
     def get_cred(self, strip=True) -> str:
@@ -52,7 +47,7 @@ class FlatFileCredContainer(CredContainerBase):
         Reads a credential out of a credential file
 
         Args:
-            strip (bool, optional): Causes the str.strip() method to be appled or not. Defaults to True.
+            strip (bool, optional): Causes the str.strip() method to be applied or not. Defaults to True.
 
         Returns:
             str: The contents of the file
@@ -81,6 +76,8 @@ class FlatFileCredContainer(CredContainerBase):
 
         with open(self.file_path, 'w') as f:
             f.write(new_cred)
+
+        self._password = self.get_cred()
 
 
     def delete_cred(self):
