@@ -35,7 +35,7 @@ def make_bitwarden_container(api_key_flat_file:str = None):
     
     file_cred_obj = FlatFileCredContainer(
         file_path=api_key_flat_file,
-        allow_broad_permissions=False) # This ss very stubborn about reading a file that isn't locked down properly
+        allow_broad_permissions=False) # This is very stubborn about reading a file that isn't locked down properly
     file_contents = file_cred_obj.read()
     j = json.loads(file_contents)
 
@@ -58,9 +58,9 @@ class BitwardenCredContainer(CredContainerBase):
 
         Args:
             client_id (string): Username (email address)
-            client_secret (string): Password (Hashed, as would be treutnred by the has_password function)
+            client_secret (string): Password (Hashed, as would be returned by the has_password function)
             
-            session_key (string):  If passed, should correspond with a currently valid sesison key that corresponds with the '--session' 
+            session_key (string):  If passed, should correspond with a currently valid session key that corresponds with the '--session' 
                 for any command and/or the BW_SESSION environment variable.  Ultimately, this is the value we're after for any subsequent
                 interactions with the cli.  Thus, if supplied (and valid) this is really the only arg we need
         """
@@ -69,6 +69,12 @@ class BitwardenCredContainer(CredContainerBase):
         which_bw = which('bw')
         if which_bw is None:
             raise FileNotFoundError(f"This program wraps the bitwarden cli tool, 'bw', but it doesn't seem to be installed (or is not on PATH).  Please fix that and try again.  See:  https://bitwarden.com/help/article/cli/")
+
+        # We also need that bw needs to be at least a specific version
+        minimum_bw_version="1.18.1"
+        valid_version_installed = self._check_bw_version_is_valid(minimum_required_version=minimum_bw_version)
+        if valid_version_installed is False:
+            raise FileNotFoundError(f"The 'bw' command line is installed, but the version is too old.  Version {minimum_bw_version} or greater is required.  Please upgrade using your OS package manager.  Type 'bw --version' to check your version")
 
         # Pin client id and client secret to self
         self.client_id = client_id
@@ -112,6 +118,54 @@ class BitwardenCredContainer(CredContainerBase):
         self.vault_contents = None
         self._load_vault()  # Sets self.vault_contents
 
+    def _check_bw_version_is_valid(self, minimum_required_version:str):
+        """
+        Checks the version of bitwarden.  We need 1.18.1 or higher to leverage reading password out of environment variables via --passwordenv
+        This method does not use the _do_bw_command() helper function because that passes the session key which we may not have yet
+
+        Args:
+            minimum_required_version (str): A minimum required version string.  Like "1.18.1"
+
+        Raises:
+            ValueError: If the 'bw --version' command results in an error for some reason
+
+        Returns:
+            [Boolean]: A flag telling us if the installed version is recent enough or not
+        """
+
+        # Get the bitwarden version from the command line. 
+        # We're purposely avoiding the _do_bw_command() method here.  
+        cmd = "bw --version"
+        result = subprocess.run(cmd, shell=True, capture_output=True)
+        return_code = result.returncode
+        std_out = result.stdout.decode('utf-8')
+        std_err = result.stderr.decode('utf-8')
+        if return_code != 0:
+            raise ValueError(f"The command '{cmd}' resulted in a non-zero exit code of {return_code}.\n{std_err}")
+        else:
+            bw_env_string = std_out.strip()
+
+        # Parse the installed version number
+        bw_version_parts = bw_env_string.split('.')
+        
+        major = int(bw_version_parts[0]) if len(bw_version_parts) >= 1 else 0
+        minor = int(bw_version_parts[1]) if len(bw_version_parts) >= 2 else 0
+        patch = int(bw_version_parts[2]) if len(bw_version_parts) >= 3 else 0
+
+        # Parse the necessary version number
+        required_bw_version_parts = minimum_required_version.split(".")
+        required_major = int(required_bw_version_parts[0]) if len(required_bw_version_parts) >= 1 else 0
+        required_minor = int(required_bw_version_parts[1]) if len(required_bw_version_parts) >= 2 else 0
+        required_patch = int(required_bw_version_parts[2]) if len(required_bw_version_parts) >= 3 else 0
+
+        # Is it up to snuff?
+        if major >= required_major and minor >= required_minor and patch >= required_patch:
+            valid_version = True
+        else:
+            valid_version = False
+        
+        return valid_version
+        
     def _do_auth_and_unlock_flow(self):
         """
         Gently guides us through the necessary steps to get the vault into an unlocked state
@@ -152,7 +206,7 @@ class BitwardenCredContainer(CredContainerBase):
 
     def _log_in(self, password_environemt_variable:str):
         """
-        Walks is through the login process.  For deets, see 'bw login --help'
+        Walks is through the login process.  For details, see 'bw login --help'
 
         Args:
             password_environemt_variable (string): The name of an environment variable which contains our master password
@@ -164,7 +218,7 @@ class BitwardenCredContainer(CredContainerBase):
         # Now log in and point to the environment variable
         print ("Logging into Bitwarden...")
         cmd = f"bw login {self.email_address} --passwordenv {password_environemt_variable} --apikey {self.client_secret}"
-        result = subprocess.run(cmd, shell=True, capture_output=True)  #TODO:  Use helper function here
+        self._do_bw_command(command=cmd)
 
     def _unlock(self, password_environemt_variable:str):
         """
@@ -176,15 +230,8 @@ class BitwardenCredContainer(CredContainerBase):
         
         print ("Unlocking Bitwarden Vault...")
         cmd = f"bw unlock --passwordenv {password_environemt_variable} --raw"  #The raw flag simply prints the session key that we should use for subsequent requests
-        result = subprocess.run(cmd, shell=True, capture_output=True)  #TODO:  Use helper function here
-
-        if result.returncode == 0:
-            session_key = result.stdout.decode('utf-8')
-            self.session_key = session_key  #This can be set in the env var BW_SESSION or passed with a '--session' argument with any bw command    
-        else: 
-            err = result.stderr.decode('utf-8')
-            raise ValueError(err)
-
+        session_key = self._do_bw_command(command=cmd)
+        self.session_key = session_key  # This can be set in the env var BW_SESSION or passed with a '--session' argument with any bw command    
 
     def _get_bitwarden_status(self):
         """
@@ -198,12 +245,7 @@ class BitwardenCredContainer(CredContainerBase):
             session_key_part = ""
 
         cmd = f"bw status{session_key_part}"
-        result = subprocess.run(cmd, shell=True, capture_output=True)  #TODO:  Use helper function here
-
-        if result.returncode != 0:
-            raise OSError(f"The command '{cmd}' resulted in return code of {result.returncode}:\n{result.stderr.decode('utf-8')}")
-        else:
-            ret_val = result.stdout.decode('utf-8')
+        ret_val = self._do_bw_command(command=cmd)
     
         return json.loads(ret_val)
 
@@ -225,7 +267,7 @@ class BitwardenCredContainer(CredContainerBase):
         self._get_bitwarden_status()
 
         command = "bw login --raw"
-        result = subprocess.run(command, shell=True, capture_output=True)  #TODO:  Use helper function here
+        result = self._do_bw_command(command=command)
 
         print(f"Instantiated {type(self)} for username (email address) {self.username}")
         
@@ -297,7 +339,7 @@ class BitwardenCredContainer(CredContainerBase):
         """
         Helper method.  Does a bitwarden cli command and passes the results back
         Args:
-            command (string):  The command to pass to the bw clie
+            command (string):  The command to pass to the bw cli
             raise_exceptions_on_non_zero (bool, optional): Controls exception raising if the command returns a non-zero code. Defaults to True.
         """
 
@@ -332,7 +374,7 @@ class BitwardenCredContainer(CredContainerBase):
             s = f"Object ID: {object_id}\tObject Type: {object_type}\tObject Name: {object_name}"
             
             if object_type != 'item':
-                raise ValueError(f"Encountered a non 'item' object type in the vault.  This is unexcpected. {s}")
+                raise ValueError(f"Encountered a non 'item' object type in the vault.  This is unexpected. {s}")
 
             print(s)
 
@@ -349,7 +391,7 @@ class BitwardenCredContainer(CredContainerBase):
         if self.vault_contents is None:
             self._load_vault()
 
-        # Try to find the item within the vault pinned to self.  This saves an uncessary trip to to BW over the internet if it isn't there
+        # Try to find the item within the vault pinned to self.  This saves an unnecessary trip to to BW over the internet if it isn't there
         sought_item = None
         for item in self.vault_contents:
             if item['id'] == guid:
@@ -391,7 +433,7 @@ class BitwardenCredContainer(CredContainerBase):
         if self.vault_contents is None:
             self._load_vault()
 
-        # Try to find the item within the vault pinned to self.  This saves an uncessary trip to to BW over the internet if it isn't there
+        # Try to find the item within the vault pinned to self.  This saves an unnecessary trip to to BW over the internet if it isn't there
         sought_item = None
         for item in self.vault_contents:
             if item['id'] == guid:
@@ -416,34 +458,3 @@ class BitwardenCredContainer(CredContainerBase):
         creds = self.get_credentials_by_guid(guid=guid)
 
         return creds['password']
-
-    
-
-
-        
-        
-
-
-
-
-
-if __name__ == '__main__':
-    #TODO:  Really need to unit test this entire module thoroughly.  Write test cases
-
-
-    o = make_bitwarden_container()
-    o.print_items()
-    itm = o.get_vault_item_by_guid(guid='755bb142-1d9d-44cf-8f74-ac600149633c')
-    un = o.get_username_by_guid(guid='755bb142-1d9d-44cf-8f74-ac600149633c')
-    pw = o.get_password_by_guid(guid='755bb142-1d9d-44cf-8f74-ac600149633c')
-
-    print("!")
-    
-
-
-
-
-    # test = hash_password(password="p4ssw0rd", email="nobody@example.com")
-    # print(test)
-
-    # print(prompt_for_credentials())
