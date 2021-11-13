@@ -43,7 +43,7 @@ class Test_FlatFileCredContainer(unittest.TestCase):
         Assert that a FileNotFoundError is raised when we try to init FlatFileCredContainer with a bad file name
         """
 
-        self.assertRaises(FileNotFoundError, FlatFileCredContainer, file_path='/tmp/fake_file.txt')
+        self.assertRaises(FileNotFoundError, FlatFileCredContainer, file_path=FLAT_FILE_THAT_DOES_NOT_EXIST)
 
     def test_init_with_valid_file_name(self):
         """
@@ -70,8 +70,7 @@ class Test_FlatFileCredContainer(unittest.TestCase):
 
 
 
-if __name__ == '__main__':
-    unittest.main()
 
+    #TODO:  Add a test to see that set cred is implemented
 
-
+    #TODO:  Add a test to see that delete cred is implemented

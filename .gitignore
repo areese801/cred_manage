@@ -30,3 +30,6 @@ requirements.txt
 dist/
 build/
 *.egg-info/
+
+# Ignore test coverage stuff
+.coverage

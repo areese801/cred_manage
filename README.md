@@ -25,7 +25,7 @@ Currently, the `cred_manage` package has these Credential Containers implemented
 - `FlatFileCredContainer` - Used to interact with flat files containing passwords or other secret things.  **Please read the warnings below and take them to heart.
 - `BitwardenCredContainer` - Used to interact with [Bitwarden Password Manager](https://bitwarden.com/).
 
-A common pattern might be to use a `FlatFileCredContainer` to manage the context necessary to subsequently log into and interact with a Password Manager tool, like Bitwarden (`BitwardenCredContainer`) or Lastpass, or a Keychain, which are surely better places to keep sensitive information that flat files.  
+A common pattern might be to use a `FlatFileCredContainer` to manage the context necessary to subsequently log into and interact with a Password Manager tool, like Bitwarden (`BitwardenCredContainer`) or Lastpass, or a Keychain, which are surely better places to keep sensitive information than flat files.  
 
 # FlatFileCredContainer
 
@@ -94,7 +94,7 @@ ff_obj = FlatFileCredContainer(file_path='/.credentials/bw_api.json', allow_broa
 # Read the JSON contents out of the Flat file Credential Container
 j = json.loads(ff_obj.read())
 
-# User those JSON contents to instantiate a Bitwarden Credential Container
+# Use those JSON contents to instantiate a Bitwarden Credential Container
 bw = BitwardenCredContainer(**j)  #  <-- If environment variable BW_SESSION is set, then no interactive password prompt here.
 
 # Print the GUIDs and corresponding names of vault items
