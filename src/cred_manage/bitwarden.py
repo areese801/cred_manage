@@ -14,25 +14,23 @@ import subprocess
 import uuid
 from shutil import which
 
-API_KEY_FLAT_FILE='/.credentials/bw_api.json'
-
-def make_bitwarden_container(api_key_flat_file:str = None):
+def make_bitwarden_container(api_key_flat_file:str = '/.credentials/bw_api.json'):
     """
     Factory function to return a BitwardenCredContainer object, instantiated using data
     read from a flat file.See 'View API Key' button at https://vault.bitwarden.com/#/settings/account
 
     Args:
-        api_key_flat_file (str, optional): The flat file that contains the API details.
-        If not provided, defaults to API_KEY_FLAT_FILE
+        api_key_flat_file (str): The flat file that contains the API details.
 
     Returns:
         BitwardenCredContainer
     """
 
-    # Read the contents of the flat file
-    if api_key_flat_file is None:
-        api_key_flat_file = API_KEY_FLAT_FILE
+    # Validate that the api key flat file actually exists
+    if not os.path.isfile(api_key_flat_file):
+        raise FileNotFoundError(f"Cannot read the bitwarden API key out of the file '{api_key_flat_file}' because it does not exist!")
     
+    # Read the contents of the flat file
     file_cred_obj = FlatFileCredContainer(
         file_path=api_key_flat_file,
         allow_broad_permissions=False) # This is very stubborn about reading a file that isn't locked down properly
