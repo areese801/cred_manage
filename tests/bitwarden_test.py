@@ -6,7 +6,6 @@ See:  https://code.visualstudio.com/docs/python/testing
 import unittest
 from cred_manage.bitwarden import BitwardenCredContainer
 from cred_manage.bitwarden import make_bitwarden_container
-from cred_manage.bitwarden import API_KEY_FLAT_FILE
 
 TEST_GUID = "755bb142-1d9d-44cf-8f74-ac600149633c"
 
