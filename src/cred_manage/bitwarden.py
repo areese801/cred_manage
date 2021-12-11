@@ -13,6 +13,7 @@ import os
 import subprocess
 import uuid
 from shutil import which
+from packaging import version
 
 def make_bitwarden_container(api_key_flat_file:str = '/.credentials/bw_api.json'):
     """
@@ -136,31 +137,15 @@ class BitwardenCredContainer(CredContainerBase):
         cmd = "bw --version"
         result = subprocess.run(cmd, shell=True, capture_output=True)
         return_code = result.returncode
-        std_out = result.stdout.decode('utf-8')
-        std_err = result.stderr.decode('utf-8')
+        std_out = result.stdout.decode('utf-8').strip()
+        std_err = result.stderr.decode('utf-8').strip()
         if return_code != 0:
             raise ValueError(f"The command '{cmd}' resulted in a non-zero exit code of {return_code}.\n{std_err}")
         else:
-            bw_env_string = std_out.strip()
+            bw_version_string = std_out.strip()
 
-        # Parse the installed version number
-        bw_version_parts = bw_env_string.split('.')
-        
-        major = int(bw_version_parts[0]) if len(bw_version_parts) >= 1 else 0
-        minor = int(bw_version_parts[1]) if len(bw_version_parts) >= 2 else 0
-        patch = int(bw_version_parts[2]) if len(bw_version_parts) >= 3 else 0
-
-        # Parse the necessary version number
-        required_bw_version_parts = minimum_required_version.split(".")
-        required_major = int(required_bw_version_parts[0]) if len(required_bw_version_parts) >= 1 else 0
-        required_minor = int(required_bw_version_parts[1]) if len(required_bw_version_parts) >= 2 else 0
-        required_patch = int(required_bw_version_parts[2]) if len(required_bw_version_parts) >= 3 else 0
-
-        # Is it up to snuff?
-        if major >= required_major and minor >= required_minor and patch >= required_patch:
-            valid_version = True
-        else:
-            valid_version = False
+        # Is it recent enough?
+        valid_version = version.parse(bw_version_string) >= version.parse(minimum_required_version)  # Returns bool
         
         return valid_version
         
